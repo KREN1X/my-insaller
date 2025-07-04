@@ -23,7 +23,8 @@ portscan_results = []
 local_ports_results = []
 service_check_results = []
 
-output_file = "audit_results.txt"
+# Устанавливаем путь для файла в домашней директории пользователя
+output_file = os.path.join(os.path.expanduser("~"), "audit_results.txt")
 
 ping_targets = [
     ('GW MikroTik', '172.16.1.254'),
@@ -51,7 +52,7 @@ def show_output(stdscr, text):
         draw_banner(stdscr)
         for idx, line in enumerate(lines[offset:offset + max_y - 4]):
             stdscr.addstr(idx + 3, 2, line[:max_x - 4])
-        stdscr.addstr(max_y - 1, 2, "Press UP/DOWN to scroll, 'q' to go back.")
+        stdscr.addstr(max_y - 1, 2, "Нажмите ВВЕРХ/ВНИЗ для прокрутки, 'q' для возврата.")
         stdscr.refresh()
 
         key = stdscr.getch()
@@ -76,14 +77,14 @@ def get_input_inline(stdscr, prompt):
 
 def ping_screen(stdscr):
     options = [f"Ping {name} ({addr})" for name, addr in ping_targets]
-    options.append('Custom address')
-    options.append('Back')
+    options.append('Пользовательский адрес')
+    options.append('Назад')
     idx = 0
 
     while True:
         stdscr.clear()
         draw_banner(stdscr)
-        stdscr.addstr(3, 2, "Ping Menu:")
+        stdscr.addstr(3, 2, "Меню Ping:")
 
         max_x = stdscr.getmaxyx()[1]
         for i, opt in enumerate(options):
@@ -103,10 +104,10 @@ def ping_screen(stdscr):
         elif key == curses.KEY_DOWN and idx < len(options) - 1:
             idx += 1
         elif key in [10, 13]:
-            if options[idx] == 'Back':
+            if options[idx] == 'Назад':
                 break
-            elif options[idx] == 'Custom address':
-                addr = get_input_inline(stdscr, "Enter address:")
+            elif options[idx] == 'Пользовательский адрес':
+                addr = get_input_inline(stdscr, "Введите адрес:")
             else:
                 addr = ping_targets[idx][1]
 
@@ -115,7 +116,7 @@ def ping_screen(stdscr):
             show_output(stdscr, res)
 
 def mtr_screen(stdscr):
-    addr = get_input_inline(stdscr, "Enter address for MTR:")
+    addr = get_input_inline(stdscr, "Введите адрес для MTR:")
     res = run_command(f"sudo mtr -r -c 10 {addr}")
     mtr_results.append(res)
     show_output(stdscr, res)
@@ -123,7 +124,7 @@ def mtr_screen(stdscr):
 def speedtest_simple(stdscr):
     stdscr.clear()
     draw_banner(stdscr)
-    stdscr.addstr(3, 2, "Running Speedtest... Please wait.")
+    stdscr.addstr(3, 2, "Запуск Speedtest... Пожалуйста, подождите.")
     stdscr.refresh()
 
     cmd = "speedtest --accept-license --accept-gdpr --format=json"
@@ -132,7 +133,7 @@ def speedtest_simple(stdscr):
     try:
         data = json.loads(raw_output)
     except Exception as e:
-        show_output(stdscr, f"JSON parse error:\n{e}\n\nRaw output:\n{raw_output}")
+        show_output(stdscr, f"Ошибка парсинга JSON:\n{e}\n\nИсходный вывод:\n{raw_output}")
         return
 
     server = data.get("server", {})
@@ -148,26 +149,26 @@ def speedtest_simple(stdscr):
 
     output = (
         "Speedtest by Ookla\n"
-        f"Server: {server.get('name', 'N/A')} - {server.get('location', 'N/A')} (ID: {server.get('id', 'N/A')})\n"
+        f"Сервер: {server.get('name', 'N/A')} - {server.get('location', 'N/A')} (ID: {server.get('id', 'N/A')})\n"
         f"ISP: {isp}\n"
-        f"Ping: {ping_latency:.2f} ms\n"
-        f"Download: {download_mbps:.2f} Mbps\n"
-        f"Upload: {upload_mbps:.2f} Mbps\n"
-        f"Packet Loss: {packet_loss}%\n"
-        f"Result URL: {result_url}\n"
+        f"Пинг: {ping_latency:.2f} мс\n"
+        f"Скачивание: {download_mbps:.2f} Мбит/с\n"
+        f"Загрузка: {upload_mbps:.2f} Мбит/с\n"
+        f"Потеря пакетов: {packet_loss}%\n"
+        f"URL результата: {result_url}\n"
     )
 
     speedtest_results.append(output)
     show_output(stdscr, output)
 
 def traceroute_screen(stdscr):
-    addr = get_input_inline(stdscr, "Enter address for traceroute:")
+    addr = get_input_inline(stdscr, "Введите адрес для traceroute:")
     res = run_command(f"traceroute {addr}")
     traceroute_results.append(res)
     show_output(stdscr, res)
 
 def dns_lookup_screen(stdscr):
-    domain = get_input_inline(stdscr, "Enter domain for DNS lookup:")
+    domain = get_input_inline(stdscr, "Введите домен для DNS-запроса:")
     res = run_command(f"dig {domain} +noall +answer")
     if not res.strip():
         res = run_command(f"nslookup {domain}")
@@ -199,14 +200,14 @@ def simple_port_scan(host, ports):
     return open_ports
 
 def port_scan_screen(stdscr):
-    host = get_input_inline(stdscr, "Enter host for port scan:")
+    host = get_input_inline(stdscr, "Введите хост для сканирования портов:")
     common_ports = [21,22,23,25,53,80,110,143,443,465,587,993,995,3306,8080]
     open_ports = simple_port_scan(host, common_ports)
-    res = f"Port scan results for {host}:\n"
+    res = f"Результаты сканирования портов для {host}:\n"
     if open_ports:
-        res += "Open ports:\n" + ", ".join(str(p) for p in open_ports)
+        res += "Открытые порты:\n" + ", ".join(str(p) for p in open_ports)
     else:
-        res += "No open ports found on common ports."
+        res += "Открытые порты не найдены среди стандартных портов."
     portscan_results.append(res)
     show_output(stdscr, res)
 
@@ -226,12 +227,12 @@ def check_service(host, port):
         return False
 
 def service_check_screen(stdscr):
-    host = get_input_inline(stdscr, "Enter host for service check:")
+    host = get_input_inline(stdscr, "Введите хост для проверки сервисов:")
     ports_services = {22: "SSH", 80: "HTTP", 443: "HTTPS"}
-    res = f"Service check for {host}:\n"
+    res = f"Проверка сервисов для {host}:\n"
     for port, name in ports_services.items():
-        status = "OPEN" if check_service(host, port) else "CLOSED"
-        res += f"  {name} (port {port}): {status}\n"
+        status = "ОТКРЫТ" if check_service(host, port) else "ЗАКРЫТ"
+        res += f"  {name} (порт {port}): {status}\n"
     service_check_results.append(res)
     show_output(stdscr, res)
 
@@ -247,16 +248,16 @@ def clear_results_screen(stdscr):
     local_ports_results.clear()
     service_check_results.clear()
 
-    show_output(stdscr, "All stored results have been cleared.")
+    show_output(stdscr, "Все сохраненные результаты очищены.")
 
 def save_results(stdscr):
     try:
-        # Ensure the directory exists
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        # Убедимся, что директория существует
+        os.makedirs(os.path.dirname(output_file) or '.', exist_ok=True)
         
-        with open(output_file, 'w') as f:
-            f.write("===== AUDIT RESULTS =====\n")
-            f.write(f"Date and time: {datetime.datetime.now()}\n\n")
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write("===== РЕЗУЛЬТАТЫ АУДИТА =====\n")
+            f.write(f"Дата и время: {datetime.datetime.now()}\n\n")
 
             def write_section(title, results):
                 f.write(f"====== {title} ======\n")
@@ -264,20 +265,20 @@ def save_results(stdscr):
                     f.write(r + "\n--------------------------\n")
                 f.write("\n")
 
-            write_section("PING RESULTS", ping_results)
-            write_section("SPEEDTEST RESULTS", speedtest_results)
-            write_section("MTR RESULTS", mtr_results)
-            write_section("TRACEROUTE RESULTS", traceroute_results)
-            write_section("DNS LOOKUP RESULTS", dns_results)
-            write_section("ARP TABLE RESULTS", arp_results)
-            write_section("INTERFACE INFO RESULTS", iface_results)
-            write_section("PORT SCAN RESULTS", portscan_results)
-            write_section("LOCAL PORTS RESULTS", local_ports_results)
-            write_section("SERVICE CHECK RESULTS", service_check_results)
+            write_section("РЕЗУЛЬТАТЫ PING", ping_results)
+            write_section("РЕЗУЛЬТАТЫ SPEEDTEST", speedtest_results)
+            write_section("РЕЗУЛЬТАТЫ MTR", mtr_results)
+            write_section("РЕЗУЛЬТАТЫ TRACEROUTE", traceroute_results)
+            write_section("РЕЗУЛЬТАТЫ DNS-ЗАПРОСОВ", dns_results)
+            write_section("РЕЗУЛЬТАТЫ ARP ТАБЛИЦЫ", arp_results)
+            write_section("ИНФОРМАЦИЯ О СЕТЕВЫХ ИНТЕРФЕЙСАХ", iface_results)
+            write_section("РЕЗУЛЬТАТЫ СКАНИРОВАНИЯ ПОРТОВ", portscan_results)
+            write_section("РЕЗУЛЬТАТЫ ЛОКАЛЬНЫХ ПОРТОВ", local_ports_results)
+            write_section("РЕЗУЛЬТАТЫ ПРОВЕРКИ СЕРВИСОВ", service_check_results)
         
-        show_output(stdscr, f"Results successfully saved to {output_file}")
+        show_output(stdscr, f"Результаты успешно сохранены в {output_file}")
     except Exception as e:
-        show_output(stdscr, f"Error saving results to {output_file}: {str(e)}")
+        show_output(stdscr, f"Ошибка при сохранении результатов в {output_file}: {str(e)}")
 
 def main(stdscr):
     curses.start_color()
@@ -288,22 +289,22 @@ def main(stdscr):
         'Speedtest',
         'MTR',
         'Traceroute',
-        'DNS Lookup',
-        'ARP Table',
-        'Network Interfaces',
-        'Port Scan',
-        'Local Open Ports',
-        'Check Network Services',
-        'Clear Results',
-        'Save all results',
-        'Exit'
+        'DNS-запрос',
+        'ARP-таблица',
+        'Сетевые интерфейсы',
+        'Сканирование портов',
+        'Локальные открытые порты',
+        'Проверка сетевых сервисов',
+        'Очистить результаты',
+        'Сохранить все результаты',
+        'Выход'
     ]
     idx = 0
 
     while True:
         stdscr.clear()
         draw_banner(stdscr)
-        stdscr.addstr(3, 2, "Main Menu:")
+        stdscr.addstr(3, 2, "Главное меню:")
 
         max_x = stdscr.getmaxyx()[1]
         for i, opt in enumerate(options):
@@ -324,7 +325,7 @@ def main(stdscr):
             idx += 1
         elif key in [10, 13]:
             choice = options[idx]
-            if choice == 'Exit':
+            if choice == 'Выход':
                 break
             elif choice == 'Ping':
                 ping_screen(stdscr)
@@ -334,21 +335,21 @@ def main(stdscr):
                 mtr_screen(stdscr)
             elif choice == 'Traceroute':
                 traceroute_screen(stdscr)
-            elif choice == 'DNS Lookup':
+            elif choice == 'DNS-запрос':
                 dns_lookup_screen(stdscr)
-            elif choice == 'ARP Table':
+            elif choice == 'ARP-таблица':
                 arp_screen(stdscr)
-            elif choice == 'Network Interfaces':
+            elif choice == 'Сетевые интерфейсы':
                 iface_info_screen(stdscr)
-            elif choice == 'Port Scan':
+            elif choice == 'Сканирование портов':
                 port_scan_screen(stdscr)
-            elif choice == 'Local Open Ports':
+            elif choice == 'Локальные открытые порты':
                 local_ports_screen(stdscr)
-            elif choice == 'Check Network Services':
+            elif choice == 'Проверка сетевых сервисов':
                 service_check_screen(stdscr)
-            elif choice == 'Clear Results':
+            elif choice == 'Очистить результаты':
                 clear_results_screen(stdscr)
-            elif choice == 'Save all results':
+            elif choice == 'Сохранить все результаты':
                 save_results(stdscr)
 
 if __name__ == "__main__":
