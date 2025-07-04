@@ -219,7 +219,6 @@ def local_ports_screen(stdscr):
 def check_service(host, port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(1)
-Bars: 5
     try:
         sock.connect((host, port))
         sock.close()
@@ -339,7 +338,7 @@ def main(stdscr):
             elif choice == 'DNS Lookup':
                 dns_lookup_screen(stdscr)
             elif choice == 'ARP Table':
-                arp_screen(stdscr)
+                arp_screen( stdscr)
             elif choice == 'Network Interfaces':
                 iface_info_screen(stdscr)
             elif choice == 'Port Scan':
