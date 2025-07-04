@@ -10,6 +10,7 @@ import subprocess
 import json
 import datetime
 import socket
+import os
 
 ping_results = []
 speedtest_results = []
@@ -248,27 +249,35 @@ def clear_results_screen(stdscr):
 
     show_output(stdscr, "All stored results have been cleared.")
 
-def save_results():
-    with open(output_file, 'w') as f:
-        f.write("===== AUDIT RESULTS =====\n")
-        f.write(f"Date and time: {datetime.datetime.now()}\n\n")
+def save_results(stdscr):
+    try:
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        
+        with open(output_file, 'w') as f:
+            f.write("===== AUDIT RESULTS =====\n")
+            f.write(f"Date and time: {datetime.datetime.now()}\n\n")
 
-        def write_section(title, results):
-            f.write(f"====== {title} ======\n")
-            for r in results:
-                f.write(r + "\n--------------------------\n")
-            f.write("\n")
+            def write_section(title, results):
+                f.write(f"====== {title} ======\n")
+                for r in results:
+                    f.write(r + "\n--------------------------\n")
+                f.write("\n")
 
-        write_section("PING RESULTS", ping_results)
-        write_section("SPEEDTEST RESULTS", speedtest_results)
-        write_section("MTR RESULTS", mtr_results)
-        write_section("TRACEROUTE RESULTS", traceroute_results)
-        write_section("DNS LOOKUP RESULTS", dns_results)
-        write_section("ARP TABLE RESULTS", arp_results)
-        write_section("INTERFACE INFO RESULTS", iface_results)
-        write_section("PORT SCAN RESULTS", portscan_results)
-        write_section("LOCAL PORTS RESULTS", local_ports_results)
-        write_section("SERVICE CHECK RESULTS", service_check_results)
+            write_section("PING RESULTS", ping_results)
+            write_section("SPEEDTEST RESULTS", speedtest_results)
+            write_section("MTR RESULTS", mtr_results)
+            write_section("TRACEROUTE RESULTS", traceroute_results)
+            write_section("DNS LOOKUP RESULTS", dns_results)
+            write_section("ARP TABLE RESULTS", arp_results)
+            write_section("INTERFACE INFO RESULTS", iface_results)
+            write_section("PORT SCAN RESULTS", portscan_results)
+            write_section("LOCAL PORTS RESULTS", local_ports_results)
+            write_section("SERVICE CHECK RESULTS", service_check_results)
+        
+        show_output(stdscr, f"Results successfully saved to {output_file}")
+    except Exception as e:
+        show_output(stdscr, f"Error saving results to {output_file}: {str(e)}")
 
 def main(stdscr):
     curses.start_color()
@@ -340,7 +349,7 @@ def main(stdscr):
             elif choice == 'Clear Results':
                 clear_results_screen(stdscr)
             elif choice == 'Save all results':
-                save_results()
+                save_results(stdscr)
 
 if __name__ == "__main__":
     curses.wrapper(main)
