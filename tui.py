@@ -35,9 +35,9 @@ ping_targets = [
 def run_command(cmd):
     try:
         output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
-        return output.decode()
+        return output.decode('utf-8', errors='replace')
     except subprocess.CalledProcessError as e:
-        return e.output.decode()
+        return e.output.decode('utf-8', errors='replace')
 
 def draw_banner(stdscr):
     stdscr.addstr(1, 2, "KRENIX NETWORK AUDIT TOOL", curses.A_BOLD)
@@ -111,7 +111,7 @@ def ping_screen(stdscr):
             else:
                 addr = ping_targets[idx][1]
 
-            res = run_command(f"ping -c 5 {addr}")
+            res = run_command(f"ping -c 15 {addr}")
             ping_results.append(res)
             show_output(stdscr, res)
 
@@ -253,17 +253,19 @@ def clear_results_screen(stdscr):
 def save_results(stdscr):
     try:
         # Ensure the directory exists
-        os.makedirs(os.path.dirname(output_file) or '.', exist_ok=True)
+        desktop_path = os.path.expanduser("~/Desktop")
+        os.makedirs(desktop_path, exist_ok=True)
         
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write("===== AUDIT RESULTS =====\n")
             f.write(f"Date and time: {datetime.datetime.now()}\n\n")
 
             def write_section(title, results):
-                f.write(f"====== {title} ======\n")
-                for r in results:
-                    f.write(r + "\n--------------------------\n")
-                f.write("\n")
+                if results:  # Only write section if there are results
+                    f.write(f"====== {title} ======\n")
+                    for i, r in enumerate(results, 1):
+                        f.write(f"Result {i}:\n{r}\n--------------------------\n")
+                    f.write("\n")
 
             write_section("PING RESULTS", ping_results)
             write_section("SPEEDTEST RESULTS", speedtest_results)
@@ -277,6 +279,8 @@ def save_results(stdscr):
             write_section("SERVICE CHECK RESULTS", service_check_results)
         
         show_output(stdscr, f"Results successfully saved to {output_file}")
+    except PermissionError:
+        show_output(stdscr, f"Permission denied: Cannot write to {output_file}. Try running with sudo or check file permissions.")
     except Exception as e:
         show_output(stdscr, f"Error saving results to {output_file}: {str(e)}")
 
@@ -338,7 +342,7 @@ def main(stdscr):
             elif choice == 'DNS Lookup':
                 dns_lookup_screen(stdscr)
             elif choice == 'ARP Table':
-                arp_screen( stdscr)
+                arp_screen(stdscr)
             elif choice == 'Network Interfaces':
                 iface_info_screen(stdscr)
             elif choice == 'Port Scan':
