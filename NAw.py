@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 ######################################
-# KRENIX NETWORK AUDIT TOOL - WINDOWS
+# KRENIX NETWORK AUDIT TOOL (Windows)
 ######################################
 
 import curses
@@ -10,6 +10,7 @@ import json
 import datetime
 import socket
 import os
+import sys
 
 ping_results = []
 speedtest_results = []
@@ -22,7 +23,7 @@ portscan_results = []
 local_ports_results = []
 service_check_results = []
 
-# Set the output file path to the Desktop
+# Set output file to Desktop
 output_file = os.path.join(os.path.expanduser("~"), "Desktop", "audit_results.txt")
 
 ping_targets = [
@@ -33,14 +34,18 @@ ping_targets = [
 
 def run_command(cmd):
     try:
+        # Correct encoding for Windows
+        if sys.platform.startswith("win"):
+            encoding = "cp866"
+        else:
+            encoding = "utf-8"
         output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
-        # Используем Windows кодировку консоли, чтобы не было кракозябр
-        return output.decode('cp866', errors='replace')
+        return output.decode(encoding, errors='replace')
     except subprocess.CalledProcessError as e:
-        return e.output.decode('cp866', errors='replace')
+        return e.output.decode(encoding, errors='replace')
 
 def draw_banner(stdscr):
-    stdscr.addstr(1, 2, "KRENIX NETWORK AUDIT TOOL (Windows)", curses.A_BOLD)
+    stdscr.addstr(1, 2, "KRENIX NETWORK AUDIT TOOL", curses.A_BOLD)
 
 def show_output(stdscr, text):
     lines = text.split('\n')
@@ -70,10 +75,7 @@ def get_input_inline(stdscr, prompt):
     stdscr.refresh()
     input_bytes = stdscr.getstr(curses.LINES - 2, len(prompt) + 3)
     curses.noecho()
-    try:
-        return input_bytes.decode('utf-8')
-    except UnicodeDecodeError:
-        return input_bytes.decode('utf-8', errors='replace')
+    return input_bytes.decode('utf-8', errors='replace')
 
 def ping_screen(stdscr):
     options = [f"Ping {name} ({addr})" for name, addr in ping_targets]
@@ -115,6 +117,49 @@ def ping_screen(stdscr):
             ping_results.append(res)
             show_output(stdscr, res)
 
+def mtr_screen(stdscr):
+    show_output(stdscr, "MTR is not supported on Windows.")
+
+def speedtest_simple(stdscr):
+    stdscr.clear()
+    draw_banner(stdscr)
+    stdscr.addstr(3, 2, "Running Speedtest... Please wait.")
+    stdscr.refresh()
+
+    cmd = "speedtest --accept-license --accept-gdpr --format=json"
+    raw_output = run_command(cmd)
+
+    try:
+        data = json.loads(raw_output)
+    except Exception as e:
+        show_output(stdscr, f"JSON parse error:\n{e}\n\nRaw output:\n{raw_output}")
+        return
+
+    server = data.get("server", {})
+    isp = data.get("isp", "N/A")
+    ping_latency = data.get("ping", {}).get("latency", 0)
+    download_bandwidth = data.get("download", {}).get("bandwidth", 0)
+    upload_bandwidth = data.get("upload", {}).get("bandwidth", 0)
+    packet_loss = data.get("packetLoss", 0) or 0
+    result_url = data.get("result", {}).get("url", "N/A")
+
+    download_mbps = download_bandwidth * 8 / 1_000_000
+    upload_mbps = upload_bandwidth * 8 / 1_000_000
+
+    output = (
+        "Speedtest by Ookla\n"
+        f"Server: {server.get('name', 'N/A')} - {server.get('location', 'N/A')} (ID: {server.get('id', 'N/A')})\n"
+        f"ISP: {isp}\n"
+        f"Ping: {ping_latency:.2f} ms\n"
+        f"Download: {download_mbps:.2f} Mbps\n"
+        f"Upload: {upload_mbps:.2f} Mbps\n"
+        f"Packet Loss: {packet_loss}%\n"
+        f"Result URL: {result_url}\n"
+    )
+
+    speedtest_results.append(output)
+    show_output(stdscr, output)
+
 def traceroute_screen(stdscr):
     addr = get_input_inline(stdscr, "Enter address for traceroute:")
     res = run_command(f"tracert {addr}")
@@ -123,7 +168,19 @@ def traceroute_screen(stdscr):
 
 def dns_lookup_screen(stdscr):
     domain = get_input_inline(stdscr, "Enter domain for DNS lookup:")
-    res = run_command(f"nslookup {domain}")
+    raw = run_command(f"nslookup {domain}")
+    lines = raw.splitlines()
+
+    # Filter lines to show only addresses and remove "Unknown" etc.
+    result_lines = []
+    for line in lines:
+        if ("Address" in line and not "Unknown" in line) or domain in line:
+            result_lines.append(line.strip())
+
+    if not result_lines:
+        result_lines = ["No valid IP addresses found."]
+
+    res = "\n".join(result_lines)
     dns_results.append(res)
     show_output(stdscr, res)
 
@@ -204,9 +261,6 @@ def clear_results_screen(stdscr):
 
 def save_results(stdscr):
     try:
-        desktop_path = os.path.expanduser("~/Desktop")
-        os.makedirs(desktop_path, exist_ok=True)
-        
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write("===== AUDIT RESULTS =====\n")
             f.write(f"Date and time: {datetime.datetime.now()}\n\n")
@@ -219,6 +273,8 @@ def save_results(stdscr):
                     f.write("\n")
 
             write_section("PING RESULTS", ping_results)
+            write_section("SPEEDTEST RESULTS", speedtest_results)
+            write_section("MTR RESULTS", mtr_results)
             write_section("TRACEROUTE RESULTS", traceroute_results)
             write_section("DNS LOOKUP RESULTS", dns_results)
             write_section("ARP TABLE RESULTS", arp_results)
@@ -226,12 +282,10 @@ def save_results(stdscr):
             write_section("PORT SCAN RESULTS", portscan_results)
             write_section("LOCAL PORTS RESULTS", local_ports_results)
             write_section("SERVICE CHECK RESULTS", service_check_results)
-        
+
         show_output(stdscr, f"Results successfully saved to {output_file}")
-    except PermissionError:
-        show_output(stdscr, f"Permission denied: Cannot write to {output_file}. Try running with admin rights.")
     except Exception as e:
-        show_output(stdscr, f"Error saving results to {output_file}: {str(e)}")
+        show_output(stdscr, f"Error saving results: {str(e)}")
 
 def main(stdscr):
     curses.start_color()
@@ -239,6 +293,8 @@ def main(stdscr):
 
     options = [
         'Ping',
+        'Speedtest',
+        'MTR',
         'Traceroute',
         'DNS Lookup',
         'ARP Table',
@@ -280,6 +336,10 @@ def main(stdscr):
                 break
             elif choice == 'Ping':
                 ping_screen(stdscr)
+            elif choice == 'Speedtest':
+                speedtest_simple(stdscr)
+            elif choice == 'MTR':
+                mtr_screen(stdscr)
             elif choice == 'Traceroute':
                 traceroute_screen(stdscr)
             elif choice == 'DNS Lookup':
