@@ -9,10 +9,8 @@ import subprocess
 import datetime
 import socket
 import os
-import json
 
 ping_results = []
-speedtest_results = []
 traceroute_results = []
 dns_results = []
 arp_results = []
@@ -117,17 +115,11 @@ def traceroute_screen(stdscr):
 
 def dns_lookup_screen(stdscr):
     domain = get_input_inline(stdscr, "Enter domain for DNS lookup:")
-    raw_output = run_command(f"nslookup {domain}")
-
-    # Очистить строки с кириллицей
-    lines = raw_output.splitlines()
-    cleaned_lines = []
-    for line in lines:
-        if "Не заслуживающий" in line or any(c in line for c in "ЁёАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"):
-            continue
-        cleaned_lines.append(line)
-
-    res = "\n".join(cleaned_lines)
+    try:
+        ips = socket.gethostbyname_ex(domain)[2]
+        res = f"Domain: {domain}\nAddresses:\n" + "\n".join(ips)
+    except Exception as e:
+        res = f"DNS lookup failed: {e}"
     dns_results.append(res)
     show_output(stdscr, res)
 
@@ -194,7 +186,6 @@ def service_check_screen(stdscr):
 
 def clear_results_screen(stdscr):
     ping_results.clear()
-    speedtest_results.clear()
     traceroute_results.clear()
     dns_results.clear()
     arp_results.clear()
@@ -202,7 +193,6 @@ def clear_results_screen(stdscr):
     portscan_results.clear()
     local_ports_results.clear()
     service_check_results.clear()
-
     show_output(stdscr, "All stored results have been cleared.")
 
 def save_results(stdscr):
