@@ -257,19 +257,20 @@ def main(stdscr):
     curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_CYAN)
 
     options = [
-        'Ping',
-        'Traceroute',
-        'DNS Lookup',
-        'Speedtest',
-        'ARP Table',
-        'Network Interfaces',
-        'Port Scan',
-        'Local Open Ports',
-        'Check Network Services',
-        'Clear Results',
-        'Save all results',
-        'Exit'
-    ]
+    'Ping',
+    'Traceroute',
+    'DNS Lookup',
+    'Speedtest',
+    'ARP Table',
+    'Network Interfaces',
+    'Port Scan',
+    'Local Open Ports',
+    'Check Network Services',
+    'Clear Results',
+    'Save all results',
+    'Exit'
+]
+
     idx = 0
 
     while True:
