@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-########################################
-# KRENIX NETWORK AUDIT TOOL - WINDOWS
-########################################
+######################################
+# KRENIX NETWORK AUDIT TOOL (Windows)
+# With Speedtest (text mode)
+######################################
 
 import curses
 import subprocess
-import json
 import datetime
 import socket
 import os
@@ -22,7 +21,6 @@ portscan_results = []
 local_ports_results = []
 service_check_results = []
 
-# Set the output file path to the Desktop
 output_file = os.path.join(os.path.expanduser("~"), "Desktop", "audit_results.txt")
 
 ping_targets = [
@@ -33,7 +31,7 @@ ping_targets = [
 
 def run_command(cmd):
     try:
-        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, encoding='utf-8', errors='ignore')
+        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, encoding='cp866')
         return output
     except subprocess.CalledProcessError as e:
         return e.output
@@ -110,9 +108,19 @@ def ping_screen(stdscr):
             else:
                 addr = ping_targets[idx][1]
 
-            res = run_command(f"ping -n 15 {addr}")
+            res = run_command(f"ping {addr}")
             ping_results.append(res)
             show_output(stdscr, res)
+
+def speedtest_simple(stdscr):
+    stdscr.clear()
+    draw_banner(stdscr)
+    stdscr.addstr(3, 2, "Running Speedtest... Please wait.")
+    stdscr.refresh()
+
+    res = run_command("speedtest --simple")
+    speedtest_results.append(res)
+    show_output(stdscr, res)
 
 def traceroute_screen(stdscr):
     addr = get_input_inline(stdscr, "Enter address for traceroute:")
@@ -163,7 +171,7 @@ def port_scan_screen(stdscr):
     show_output(stdscr, res)
 
 def local_ports_screen(stdscr):
-    res = run_command("netstat -an")
+    res = run_command("netstat -ano")
     local_ports_results.append(res)
     show_output(stdscr, res)
 
@@ -189,6 +197,7 @@ def service_check_screen(stdscr):
 
 def clear_results_screen(stdscr):
     ping_results.clear()
+    speedtest_results.clear()
     traceroute_results.clear()
     dns_results.clear()
     arp_results.clear()
@@ -213,6 +222,7 @@ def save_results(stdscr):
                     f.write("\n")
 
             write_section("PING RESULTS", ping_results)
+            write_section("SPEEDTEST RESULTS", speedtest_results)
             write_section("TRACEROUTE RESULTS", traceroute_results)
             write_section("DNS LOOKUP RESULTS", dns_results)
             write_section("ARP TABLE RESULTS", arp_results)
@@ -220,10 +230,10 @@ def save_results(stdscr):
             write_section("PORT SCAN RESULTS", portscan_results)
             write_section("LOCAL PORTS RESULTS", local_ports_results)
             write_section("SERVICE CHECK RESULTS", service_check_results)
-        
+
         show_output(stdscr, f"Results successfully saved to {output_file}")
     except Exception as e:
-        show_output(stdscr, f"Error saving results to {output_file}: {str(e)}")
+        show_output(stdscr, f"Error saving results: {str(e)}")
 
 def main(stdscr):
     curses.start_color()
@@ -231,6 +241,7 @@ def main(stdscr):
 
     options = [
         'Ping',
+        'Speedtest',
         'Traceroute',
         'DNS Lookup',
         'ARP Table',
@@ -272,6 +283,8 @@ def main(stdscr):
                 break
             elif choice == 'Ping':
                 ping_screen(stdscr)
+            elif choice == 'Speedtest':
+                speedtest_simple(stdscr)
             elif choice == 'Traceroute':
                 traceroute_screen(stdscr)
             elif choice == 'DNS Lookup':
