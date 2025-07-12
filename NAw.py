@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 
 import curses
-import socket
 import subprocess
 import json
 import datetime
+import socket
 import os
-import speedtest
 
 ping_results = []
 speedtest_results = []
@@ -20,9 +19,15 @@ service_check_results = []
 
 output_file = os.path.join(os.path.expanduser("~"), "Desktop", "audit_results.txt")
 
+ping_targets = [
+    ('GW MikroTik', '172.16.1.254'),
+    ('google.com', 'google.com'),
+    ('mail.ru', 'mail.ru')
+]
+
 def run_command(cmd):
     try:
-        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, encoding='cp866')
+        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, encoding='utf-8', errors='ignore')
         return output
     except subprocess.CalledProcessError as e:
         return e.output
@@ -58,13 +63,47 @@ def get_input_inline(stdscr, prompt):
     stdscr.refresh()
     input_bytes = stdscr.getstr(curses.LINES - 2, len(prompt) + 3)
     curses.noecho()
-    return input_bytes.decode('utf-8', errors='replace')
+    return input_bytes.decode('utf-8', errors='ignore')
 
 def ping_screen(stdscr):
-    addr = get_input_inline(stdscr, "Enter address for ping:")
-    res = run_command(f"ping -n 10 {addr}")
-    ping_results.append(res)
-    show_output(stdscr, res)
+    options = [f"Ping {name} ({addr})" for name, addr in ping_targets]
+    options.append('Custom address')
+    options.append('Back')
+    idx = 0
+
+    while True:
+        stdscr.clear()
+        draw_banner(stdscr)
+        stdscr.addstr(3, 2, "Ping Menu:")
+
+        max_x = stdscr.getmaxyx()[1]
+        for i, opt in enumerate(options):
+            menu_line = opt.ljust(max_x - 8)
+            if i == idx:
+                stdscr.attron(curses.color_pair(1))
+                stdscr.addstr(5 + i, 4, menu_line)
+                stdscr.attroff(curses.color_pair(1))
+            else:
+                stdscr.addstr(5 + i, 4, menu_line)
+
+        stdscr.refresh()
+        key = stdscr.getch()
+
+        if key == curses.KEY_UP and idx > 0:
+            idx -= 1
+        elif key == curses.KEY_DOWN and idx < len(options) - 1:
+            idx += 1
+        elif key in [10, 13]:
+            if options[idx] == 'Back':
+                break
+            elif options[idx] == 'Custom address':
+                addr = get_input_inline(stdscr, "Enter address:")
+            else:
+                addr = ping_targets[idx][1]
+
+            res = run_command(f"ping -n 15 {addr}")
+            ping_results.append(res)
+            show_output(stdscr, res)
 
 def traceroute_screen(stdscr):
     addr = get_input_inline(stdscr, "Enter address for traceroute:")
@@ -74,33 +113,43 @@ def traceroute_screen(stdscr):
 
 def dns_lookup_screen(stdscr):
     domain = get_input_inline(stdscr, "Enter domain for DNS lookup:")
-    try:
-        ips = socket.gethostbyname_ex(domain)[2]
-        res = f"Domain: {domain}\nAddresses:\n" + "\n".join(ips)
-    except Exception as e:
-        res = f"DNS lookup failed: {e}"
+    res = run_command(f"nslookup {domain}")
     dns_results.append(res)
     show_output(stdscr, res)
 
 def speedtest_screen(stdscr):
     stdscr.clear()
     draw_banner(stdscr)
-    stdscr.addstr(3, 2, "Running speedtest, please wait...")
+    stdscr.addstr(3, 2, "Running Speedtest... Please wait.")
     stdscr.refresh()
+
+    raw_output = run_command("speedtest --json")
+
     try:
-        st = speedtest.Speedtest()
-        st.get_best_server()
-        download = st.download() / 1_000_000  # Mbps
-        upload = st.upload() / 1_000_000
-        ping = st.results.ping
-        res = (f"Speedtest Results:\n"
-               f"Ping: {ping:.2f} ms\n"
-               f"Download: {download:.2f} Mbps\n"
-               f"Upload: {upload:.2f} Mbps\n")
+        data = json.loads(raw_output)
     except Exception as e:
-        res = f"Speedtest failed: {e}"
-    speedtest_results.append(res)
-    show_output(stdscr, res)
+        show_output(stdscr, f"JSON parse error:\n{e}\n\nRaw output:\n{raw_output}")
+        return
+
+    download_mbps = data["download"] / 1_000_000
+    upload_mbps = data["upload"] / 1_000_000
+    ping_ms = data["ping"]
+    isp = data.get("client", {}).get("isp", "N/A")
+    server_name = data.get("server", {}).get("name", "N/A")
+    result_url = data.get("share", "N/A")
+
+    output = (
+        "Speedtest Results\n"
+        f"Server: {server_name}\n"
+        f"ISP: {isp}\n"
+        f"Ping: {ping_ms:.2f} ms\n"
+        f"Download: {download_mbps:.2f} Mbps\n"
+        f"Upload: {upload_mbps:.2f} Mbps\n"
+        f"Result URL: {result_url}\n"
+    )
+
+    speedtest_results.append(output)
+    show_output(stdscr, output)
 
 def arp_screen(stdscr):
     res = run_command("arp -a")
@@ -122,19 +171,19 @@ def simple_port_scan(host, ports):
             if result == 0:
                 open_ports.append(port)
             sock.close()
-        except:
+        except Exception:
             sock.close()
     return open_ports
 
 def port_scan_screen(stdscr):
     host = get_input_inline(stdscr, "Enter host for port scan:")
-    common_ports = [21, 22, 23, 25, 53, 80, 110, 143, 443, 3306, 8080]
+    common_ports = [21,22,23,25,53,80,110,143,443,465,587,993,995,3306,8080]
     open_ports = simple_port_scan(host, common_ports)
     res = f"Port scan results for {host}:\n"
     if open_ports:
         res += "Open ports:\n" + ", ".join(str(p) for p in open_ports)
     else:
-        res += "No open ports found."
+        res += "No open ports found on common ports."
     portscan_results.append(res)
     show_output(stdscr, res)
 
@@ -150,7 +199,7 @@ def check_service(host, port):
         sock.connect((host, port))
         sock.close()
         return True
-    except:
+    except Exception:
         return False
 
 def service_check_screen(stdscr):
@@ -173,6 +222,7 @@ def clear_results_screen(stdscr):
     portscan_results.clear()
     local_ports_results.clear()
     service_check_results.clear()
+
     show_output(stdscr, "All stored results have been cleared.")
 
 def save_results(stdscr):
@@ -200,7 +250,7 @@ def save_results(stdscr):
 
         show_output(stdscr, f"Results successfully saved to {output_file}")
     except Exception as e:
-        show_output(stdscr, f"Error saving results: {e}")
+        show_output(stdscr, f"Error saving results to {output_file}: {str(e)}")
 
 def main(stdscr):
     curses.start_color()
