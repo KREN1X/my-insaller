@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 
-######################################
-# KRENIX NETWORK AUDIT TOOL - WINDOWS
-######################################
-
 import curses
 import socket
 import subprocess
 import json
 import datetime
 import os
+import speedtest
 
 ping_results = []
 speedtest_results = []
@@ -83,6 +80,26 @@ def dns_lookup_screen(stdscr):
     except Exception as e:
         res = f"DNS lookup failed: {e}"
     dns_results.append(res)
+    show_output(stdscr, res)
+
+def speedtest_screen(stdscr):
+    stdscr.clear()
+    draw_banner(stdscr)
+    stdscr.addstr(3, 2, "Running speedtest, please wait...")
+    stdscr.refresh()
+    try:
+        st = speedtest.Speedtest()
+        st.get_best_server()
+        download = st.download() / 1_000_000  # Mbps
+        upload = st.upload() / 1_000_000
+        ping = st.results.ping
+        res = (f"Speedtest Results:\n"
+               f"Ping: {ping:.2f} ms\n"
+               f"Download: {download:.2f} Mbps\n"
+               f"Upload: {upload:.2f} Mbps\n")
+    except Exception as e:
+        res = f"Speedtest failed: {e}"
+    speedtest_results.append(res)
     show_output(stdscr, res)
 
 def arp_screen(stdscr):
@@ -172,6 +189,7 @@ def save_results(stdscr):
                     f.write("\n")
 
             write_section("PING RESULTS", ping_results)
+            write_section("SPEEDTEST RESULTS", speedtest_results)
             write_section("TRACEROUTE RESULTS", traceroute_results)
             write_section("DNS LOOKUP RESULTS", dns_results)
             write_section("ARP TABLE RESULTS", arp_results)
@@ -192,6 +210,7 @@ def main(stdscr):
         'Ping',
         'Traceroute',
         'DNS Lookup',
+        'Speedtest',
         'ARP Table',
         'Network Interfaces',
         'Port Scan',
@@ -235,6 +254,8 @@ def main(stdscr):
                 traceroute_screen(stdscr)
             elif choice == 'DNS Lookup':
                 dns_lookup_screen(stdscr)
+            elif choice == 'Speedtest':
+                speedtest_screen(stdscr)
             elif choice == 'ARP Table':
                 arp_screen(stdscr)
             elif choice == 'Network Interfaces':
