@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 
+########################################
+# KRENIX NETWORK AUDIT TOOL - WINDOWS FINAL
+########################################
+
 import curses
 import subprocess
-import json
 import datetime
 import socket
 import os
+import dns.resolver
+import speedtest
 
 ping_results = []
 speedtest_results = []
+mtr_results = []
 traceroute_results = []
 dns_results = []
 arp_results = []
@@ -27,10 +33,10 @@ ping_targets = [
 
 def run_command(cmd):
     try:
-        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, encoding='utf-8', errors='ignore')
-        return output
+        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+        return output.decode('cp866', errors='replace')
     except subprocess.CalledProcessError as e:
-        return e.output
+        return e.output.decode('cp866', errors='replace')
 
 def draw_banner(stdscr):
     stdscr.addstr(1, 2, "KRENIX NETWORK AUDIT TOOL", curses.A_BOLD)
@@ -63,7 +69,10 @@ def get_input_inline(stdscr, prompt):
     stdscr.refresh()
     input_bytes = stdscr.getstr(curses.LINES - 2, len(prompt) + 3)
     curses.noecho()
-    return input_bytes.decode('utf-8', errors='ignore')
+    try:
+        return input_bytes.decode('utf-8')
+    except UnicodeDecodeError:
+        return input_bytes.decode('utf-8', errors='replace')
 
 def ping_screen(stdscr):
     options = [f"Ping {name} ({addr})" for name, addr in ping_targets]
@@ -101,7 +110,7 @@ def ping_screen(stdscr):
             else:
                 addr = ping_targets[idx][1]
 
-            res = run_command(f"ping -n 15 {addr}")
+            res = run_command(f"ping {addr} -n 15")
             ping_results.append(res)
             show_output(stdscr, res)
 
@@ -113,43 +122,15 @@ def traceroute_screen(stdscr):
 
 def dns_lookup_screen(stdscr):
     domain = get_input_inline(stdscr, "Enter domain for DNS lookup:")
-    res = run_command(f"nslookup {domain}")
+    try:
+        answers = dns.resolver.resolve(domain, 'A')
+        res = f"DNS lookup for {domain}:\n"
+        for rdata in answers:
+            res += f"  {rdata.address}\n"
+    except Exception as e:
+        res = f"DNS lookup failed: {e}"
     dns_results.append(res)
     show_output(stdscr, res)
-
-def speedtest_screen(stdscr):
-    stdscr.clear()
-    draw_banner(stdscr)
-    stdscr.addstr(3, 2, "Running Speedtest... Please wait.")
-    stdscr.refresh()
-
-    raw_output = run_command("speedtest --json")
-
-    try:
-        data = json.loads(raw_output)
-    except Exception as e:
-        show_output(stdscr, f"JSON parse error:\n{e}\n\nRaw output:\n{raw_output}")
-        return
-
-    download_mbps = data["download"] / 1_000_000
-    upload_mbps = data["upload"] / 1_000_000
-    ping_ms = data["ping"]
-    isp = data.get("client", {}).get("isp", "N/A")
-    server_name = data.get("server", {}).get("name", "N/A")
-    result_url = data.get("share", "N/A")
-
-    output = (
-        "Speedtest Results\n"
-        f"Server: {server_name}\n"
-        f"ISP: {isp}\n"
-        f"Ping: {ping_ms:.2f} ms\n"
-        f"Download: {download_mbps:.2f} Mbps\n"
-        f"Upload: {upload_mbps:.2f} Mbps\n"
-        f"Result URL: {result_url}\n"
-    )
-
-    speedtest_results.append(output)
-    show_output(stdscr, output)
 
 def arp_screen(stdscr):
     res = run_command("arp -a")
@@ -188,7 +169,7 @@ def port_scan_screen(stdscr):
     show_output(stdscr, res)
 
 def local_ports_screen(stdscr):
-    res = run_command("netstat -an")
+    res = run_command("netstat -ano")
     local_ports_results.append(res)
     show_output(stdscr, res)
 
@@ -212,9 +193,40 @@ def service_check_screen(stdscr):
     service_check_results.append(res)
     show_output(stdscr, res)
 
+def speedtest_screen(stdscr):
+    stdscr.clear()
+    draw_banner(stdscr)
+    stdscr.addstr(3, 2, "Running Speedtest... Please wait.")
+    stdscr.refresh()
+
+    st = speedtest.Speedtest()
+    st.get_best_server()
+    st.download()
+    st.upload()
+    ping_latency = st.results.ping
+    download_mbps = st.results.download / 1_000_000 * 8
+    upload_mbps = st.results.upload / 1_000_000 * 8
+    isp = st.config['client']['isp']
+    server_name = st.results.server['name']
+    result_url = st.results.share()
+
+    output = (
+        "Speedtest Results\n"
+        f"Server: {server_name}\n"
+        f"ISP: {isp}\n"
+        f"Ping: {ping_latency:.2f} ms\n"
+        f"Download: {download_mbps:.2f} Mbps\n"
+        f"Upload: {upload_mbps:.2f} Mbps\n"
+        f"Result URL: {result_url}\n"
+    )
+
+    speedtest_results.append(output)
+    show_output(stdscr, output)
+
 def clear_results_screen(stdscr):
     ping_results.clear()
     speedtest_results.clear()
+    mtr_results.clear()
     traceroute_results.clear()
     dns_results.clear()
     arp_results.clear()
@@ -247,30 +259,29 @@ def save_results(stdscr):
             write_section("PORT SCAN RESULTS", portscan_results)
             write_section("LOCAL PORTS RESULTS", local_ports_results)
             write_section("SERVICE CHECK RESULTS", service_check_results)
-
+        
         show_output(stdscr, f"Results successfully saved to {output_file}")
     except Exception as e:
-        show_output(stdscr, f"Error saving results to {output_file}: {str(e)}")
+        show_output(stdscr, f"Error saving results: {str(e)}")
 
 def main(stdscr):
     curses.start_color()
     curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_CYAN)
 
     options = [
-    'Ping',
-    'Traceroute',
-    'DNS Lookup',
-    'Speedtest',
-    'ARP Table',
-    'Network Interfaces',
-    'Port Scan',
-    'Local Open Ports',
-    'Check Network Services',
-    'Clear Results',
-    'Save all results',
-    'Exit'
-]
-
+        'Ping',
+        'Speedtest',
+        'Traceroute',
+        'DNS Lookup',
+        'ARP Table',
+        'Network Interfaces',
+        'Port Scan',
+        'Local Open Ports',
+        'Check Network Services',
+        'Clear Results',
+        'Save all results',
+        'Exit'
+    ]
     idx = 0
 
     while True:
@@ -301,12 +312,12 @@ def main(stdscr):
                 break
             elif choice == 'Ping':
                 ping_screen(stdscr)
+            elif choice == 'Speedtest':
+                speedtest_screen(stdscr)
             elif choice == 'Traceroute':
                 traceroute_screen(stdscr)
             elif choice == 'DNS Lookup':
                 dns_lookup_screen(stdscr)
-            elif choice == 'Speedtest':
-                speedtest_screen(stdscr)
             elif choice == 'ARP Table':
                 arp_screen(stdscr)
             elif choice == 'Network Interfaces':
