@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 
-########################################
-# KRENIX NETWORK AUDIT TOOL - WINDOWS FINAL
-########################################
+######################################
+# KRENIX NETWORK AUDIT TOOL (Windows)
+######################################
 
 import curses
 import subprocess
+import json
 import datetime
 import socket
 import os
+import winshell
 import dns.resolver
-import speedtest
+
+# Путь к файлу на рабочем столе
+output_file = os.path.join(winshell.desktop(), "audit_results.txt")
 
 ping_results = []
 speedtest_results = []
-mtr_results = []
 traceroute_results = []
 dns_results = []
 arp_results = []
@@ -22,8 +25,6 @@ iface_results = []
 portscan_results = []
 local_ports_results = []
 service_check_results = []
-
-output_file = os.path.join(os.path.expanduser("~"), "Desktop", "audit_results.txt")
 
 ping_targets = [
     ('GW MikroTik', '172.16.1.254'),
@@ -33,10 +34,10 @@ ping_targets = [
 
 def run_command(cmd):
     try:
-        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
-        return output.decode('cp866', errors='replace')
+        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, encoding='cp866')
+        return output
     except subprocess.CalledProcessError as e:
-        return e.output.decode('cp866', errors='replace')
+        return e.output
 
 def draw_banner(stdscr):
     stdscr.addstr(1, 2, "KRENIX NETWORK AUDIT TOOL", curses.A_BOLD)
@@ -110,9 +111,44 @@ def ping_screen(stdscr):
             else:
                 addr = ping_targets[idx][1]
 
-            res = run_command(f"ping {addr} -n 15")
+            res = run_command(f"ping -n 15 {addr}")
             ping_results.append(res)
             show_output(stdscr, res)
+
+def speedtest_screen(stdscr):
+    stdscr.clear()
+    draw_banner(stdscr)
+    stdscr.addstr(3, 2, "Running Speedtest... Please wait.")
+    stdscr.refresh()
+
+    cmd = "speedtest --simple --json"
+    raw_output = run_command(cmd)
+
+    try:
+        data = json.loads(raw_output)
+    except Exception as e:
+        show_output(stdscr, f"JSON parse error:\n{e}\n\nRaw output:\n{raw_output}")
+        return
+
+    server = data.get("server", {})
+    isp = data.get("client", {}).get("isp", "N/A")
+    ping_latency = data.get("ping", 0)
+    download_speed = data.get("download", 0) / 1_000_000
+    upload_speed = data.get("upload", 0) / 1_000_000
+    result_url = data.get("share", "None")
+
+    output = (
+        "Speedtest Results\n"
+        f"Server: {server.get('name', 'N/A')}\n"
+        f"ISP: {isp}\n"
+        f"Ping: {ping_latency:.2f} ms\n"
+        f"Download: {download_speed:.2f} Mbps\n"
+        f"Upload: {upload_speed:.2f} Mbps\n"
+        f"Result URL: {result_url}\n"
+    )
+
+    speedtest_results.append(output)
+    show_output(stdscr, output)
 
 def traceroute_screen(stdscr):
     addr = get_input_inline(stdscr, "Enter address for traceroute:")
@@ -128,7 +164,8 @@ def dns_lookup_screen(stdscr):
         for rdata in answers:
             res += f"  {rdata.address}\n"
     except Exception as e:
-        res = f"DNS lookup failed: {e}"
+        res = f"DNS lookup failed: {str(e)}"
+
     dns_results.append(res)
     show_output(stdscr, res)
 
@@ -158,7 +195,7 @@ def simple_port_scan(host, ports):
 
 def port_scan_screen(stdscr):
     host = get_input_inline(stdscr, "Enter host for port scan:")
-    common_ports = [21,22,23,25,53,80,110,143,443,465,587,993,995,3306,8080]
+    common_ports = [21, 22, 23, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 8080]
     open_ports = simple_port_scan(host, common_ports)
     res = f"Port scan results for {host}:\n"
     if open_ports:
@@ -193,40 +230,9 @@ def service_check_screen(stdscr):
     service_check_results.append(res)
     show_output(stdscr, res)
 
-def speedtest_screen(stdscr):
-    stdscr.clear()
-    draw_banner(stdscr)
-    stdscr.addstr(3, 2, "Running Speedtest... Please wait.")
-    stdscr.refresh()
-
-    st = speedtest.Speedtest()
-    st.get_best_server()
-    st.download()
-    st.upload()
-    ping_latency = st.results.ping
-    download_mbps = st.results.download / 1_000_000 * 8
-    upload_mbps = st.results.upload / 1_000_000 * 8
-    isp = st.config['client']['isp']
-    server_name = st.results.server['name']
-    result_url = st.results.share()
-
-    output = (
-        "Speedtest Results\n"
-        f"Server: {server_name}\n"
-        f"ISP: {isp}\n"
-        f"Ping: {ping_latency:.2f} ms\n"
-        f"Download: {download_mbps:.2f} Mbps\n"
-        f"Upload: {upload_mbps:.2f} Mbps\n"
-        f"Result URL: {result_url}\n"
-    )
-
-    speedtest_results.append(output)
-    show_output(stdscr, output)
-
 def clear_results_screen(stdscr):
     ping_results.clear()
     speedtest_results.clear()
-    mtr_results.clear()
     traceroute_results.clear()
     dns_results.clear()
     arp_results.clear()
@@ -259,7 +265,7 @@ def save_results(stdscr):
             write_section("PORT SCAN RESULTS", portscan_results)
             write_section("LOCAL PORTS RESULTS", local_ports_results)
             write_section("SERVICE CHECK RESULTS", service_check_results)
-        
+
         show_output(stdscr, f"Results successfully saved to {output_file}")
     except Exception as e:
         show_output(stdscr, f"Error saving results: {str(e)}")
