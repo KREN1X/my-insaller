@@ -2,7 +2,6 @@
 
 ######################################
 # KRENIX NETWORK AUDIT TOOL (Windows)
-# With Speedtest (text mode)
 ######################################
 
 import curses
@@ -10,6 +9,7 @@ import subprocess
 import datetime
 import socket
 import os
+import json
 
 ping_results = []
 speedtest_results = []
@@ -67,10 +67,7 @@ def get_input_inline(stdscr, prompt):
     stdscr.refresh()
     input_bytes = stdscr.getstr(curses.LINES - 2, len(prompt) + 3)
     curses.noecho()
-    try:
-        return input_bytes.decode('utf-8')
-    except UnicodeDecodeError:
-        return input_bytes.decode('utf-8', errors='replace')
+    return input_bytes.decode('utf-8', errors='replace')
 
 def ping_screen(stdscr):
     options = [f"Ping {name} ({addr})" for name, addr in ping_targets]
@@ -108,19 +105,9 @@ def ping_screen(stdscr):
             else:
                 addr = ping_targets[idx][1]
 
-            res = run_command(f"ping {addr}")
+            res = run_command(f"ping -n 15 {addr}")
             ping_results.append(res)
             show_output(stdscr, res)
-
-def speedtest_simple(stdscr):
-    stdscr.clear()
-    draw_banner(stdscr)
-    stdscr.addstr(3, 2, "Running Speedtest... Please wait.")
-    stdscr.refresh()
-
-    res = run_command("speedtest --simple")
-    speedtest_results.append(res)
-    show_output(stdscr, res)
 
 def traceroute_screen(stdscr):
     addr = get_input_inline(stdscr, "Enter address for traceroute:")
@@ -130,7 +117,17 @@ def traceroute_screen(stdscr):
 
 def dns_lookup_screen(stdscr):
     domain = get_input_inline(stdscr, "Enter domain for DNS lookup:")
-    res = run_command(f"nslookup {domain}")
+    raw_output = run_command(f"nslookup {domain}")
+
+    # Очистить строки с кириллицей
+    lines = raw_output.splitlines()
+    cleaned_lines = []
+    for line in lines:
+        if "Не заслуживающий" in line or any(c in line for c in "ЁёАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"):
+            continue
+        cleaned_lines.append(line)
+
+    res = "\n".join(cleaned_lines)
     dns_results.append(res)
     show_output(stdscr, res)
 
@@ -222,7 +219,6 @@ def save_results(stdscr):
                     f.write("\n")
 
             write_section("PING RESULTS", ping_results)
-            write_section("SPEEDTEST RESULTS", speedtest_results)
             write_section("TRACEROUTE RESULTS", traceroute_results)
             write_section("DNS LOOKUP RESULTS", dns_results)
             write_section("ARP TABLE RESULTS", arp_results)
@@ -241,7 +237,6 @@ def main(stdscr):
 
     options = [
         'Ping',
-        'Speedtest',
         'Traceroute',
         'DNS Lookup',
         'ARP Table',
@@ -283,8 +278,6 @@ def main(stdscr):
                 break
             elif choice == 'Ping':
                 ping_screen(stdscr)
-            elif choice == 'Speedtest':
-                speedtest_simple(stdscr)
             elif choice == 'Traceroute':
                 traceroute_screen(stdscr)
             elif choice == 'DNS Lookup':
