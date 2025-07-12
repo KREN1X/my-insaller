@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 ######################################
-# KRENIX NETWORK AUDIT TOOL - WINDOWS VERSION
+# KRENIX NETWORK AUDIT TOOL - WINDOWS
 ######################################
 
 import curses
@@ -22,6 +22,7 @@ portscan_results = []
 local_ports_results = []
 service_check_results = []
 
+# Set the output file path to the Desktop
 output_file = os.path.join(os.path.expanduser("~"), "Desktop", "audit_results.txt")
 
 ping_targets = [
@@ -33,12 +34,13 @@ ping_targets = [
 def run_command(cmd):
     try:
         output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
-        return output.decode('utf-8', errors='replace')
+        # Используем Windows кодировку консоли, чтобы не было кракозябр
+        return output.decode('cp866', errors='replace')
     except subprocess.CalledProcessError as e:
-        return e.output.decode('utf-8', errors='replace')
+        return e.output.decode('cp866', errors='replace')
 
 def draw_banner(stdscr):
-    stdscr.addstr(1, 2, "KRENIX NETWORK AUDIT TOOL - Windows", curses.A_BOLD)
+    stdscr.addstr(1, 2, "KRENIX NETWORK AUDIT TOOL (Windows)", curses.A_BOLD)
 
 def show_output(stdscr, text):
     lines = text.split('\n')
@@ -113,54 +115,8 @@ def ping_screen(stdscr):
             ping_results.append(res)
             show_output(stdscr, res)
 
-def mtr_screen(stdscr):
-    addr = get_input_inline(stdscr, "Enter address for Pathping:")
-    res = run_command(f"pathping {addr}")
-    mtr_results.append(res)
-    show_output(stdscr, res)
-
-def speedtest_simple(stdscr):
-    stdscr.clear()
-    draw_banner(stdscr)
-    stdscr.addstr(3, 2, "Running Speedtest... Please wait.")
-    stdscr.refresh()
-
-    cmd = "speedtest --accept-license --accept-gdpr --format=json"
-    raw_output = run_command(cmd)
-
-    try:
-        data = json.loads(raw_output)
-    except Exception as e:
-        show_output(stdscr, f"JSON parse error:\n{e}\n\nRaw output:\n{raw_output}")
-        return
-
-    server = data.get("server", {})
-    isp = data.get("isp", "N/A")
-    ping_latency = data.get("ping", {}).get("latency", 0)
-    download_bandwidth = data.get("download", {}).get("bandwidth", 0)
-    upload_bandwidth = data.get("upload", {}).get("bandwidth", 0)
-    packet_loss = data.get("packetLoss", 0) or 0
-    result_url = data.get("result", {}).get("url", "N/A")
-
-    download_mbps = download_bandwidth * 8 / 1_000_000
-    upload_mbps = upload_bandwidth * 8 / 1_000_000
-
-    output = (
-        "Speedtest by Ookla\n"
-        f"Server: {server.get('name', 'N/A')} - {server.get('location', 'N/A')} (ID: {server.get('id', 'N/A')})\n"
-        f"ISP: {isp}\n"
-        f"Ping: {ping_latency:.2f} ms\n"
-        f"Download: {download_mbps:.2f} Mbps\n"
-        f"Upload: {upload_mbps:.2f} Mbps\n"
-        f"Packet Loss: {packet_loss}%\n"
-        f"Result URL: {result_url}\n"
-    )
-
-    speedtest_results.append(output)
-    show_output(stdscr, output)
-
 def traceroute_screen(stdscr):
-    addr = get_input_inline(stdscr, "Enter address for tracert:")
+    addr = get_input_inline(stdscr, "Enter address for traceroute:")
     res = run_command(f"tracert {addr}")
     traceroute_results.append(res)
     show_output(stdscr, res)
@@ -208,7 +164,7 @@ def port_scan_screen(stdscr):
     show_output(stdscr, res)
 
 def local_ports_screen(stdscr):
-    res = run_command("netstat -an")
+    res = run_command("netstat -ano")
     local_ports_results.append(res)
     show_output(stdscr, res)
 
@@ -250,7 +206,7 @@ def save_results(stdscr):
     try:
         desktop_path = os.path.expanduser("~/Desktop")
         os.makedirs(desktop_path, exist_ok=True)
-
+        
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write("===== AUDIT RESULTS =====\n")
             f.write(f"Date and time: {datetime.datetime.now()}\n\n")
@@ -263,8 +219,6 @@ def save_results(stdscr):
                     f.write("\n")
 
             write_section("PING RESULTS", ping_results)
-            write_section("SPEEDTEST RESULTS", speedtest_results)
-            write_section("MTR RESULTS", mtr_results)
             write_section("TRACEROUTE RESULTS", traceroute_results)
             write_section("DNS LOOKUP RESULTS", dns_results)
             write_section("ARP TABLE RESULTS", arp_results)
@@ -272,7 +226,7 @@ def save_results(stdscr):
             write_section("PORT SCAN RESULTS", portscan_results)
             write_section("LOCAL PORTS RESULTS", local_ports_results)
             write_section("SERVICE CHECK RESULTS", service_check_results)
-
+        
         show_output(stdscr, f"Results successfully saved to {output_file}")
     except PermissionError:
         show_output(stdscr, f"Permission denied: Cannot write to {output_file}. Try running with admin rights.")
@@ -285,8 +239,6 @@ def main(stdscr):
 
     options = [
         'Ping',
-        'Speedtest',
-        'Pathping (MTR alternative)',
         'Traceroute',
         'DNS Lookup',
         'ARP Table',
@@ -328,10 +280,6 @@ def main(stdscr):
                 break
             elif choice == 'Ping':
                 ping_screen(stdscr)
-            elif choice == 'Speedtest':
-                speedtest_simple(stdscr)
-            elif choice == 'Pathping (MTR alternative)':
-                mtr_screen(stdscr)
             elif choice == 'Traceroute':
                 traceroute_screen(stdscr)
             elif choice == 'DNS Lookup':
