@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 
 ######################################
-# KRENIX NETWORK AUDIT TOOL (Windows)
+# KRENIX NETWORK AUDIT TOOL - WINDOWS
 ######################################
 
 import curses
-import subprocess
-import datetime
 import socket
+import subprocess
+import json
+import datetime
 import os
 
 ping_results = []
+speedtest_results = []
 traceroute_results = []
 dns_results = []
 arp_results = []
@@ -20,12 +22,6 @@ local_ports_results = []
 service_check_results = []
 
 output_file = os.path.join(os.path.expanduser("~"), "Desktop", "audit_results.txt")
-
-ping_targets = [
-    ('GW MikroTik', '172.16.1.254'),
-    ('google.com', 'google.com'),
-    ('mail.ru', 'mail.ru')
-]
 
 def run_command(cmd):
     try:
@@ -68,44 +64,10 @@ def get_input_inline(stdscr, prompt):
     return input_bytes.decode('utf-8', errors='replace')
 
 def ping_screen(stdscr):
-    options = [f"Ping {name} ({addr})" for name, addr in ping_targets]
-    options.append('Custom address')
-    options.append('Back')
-    idx = 0
-
-    while True:
-        stdscr.clear()
-        draw_banner(stdscr)
-        stdscr.addstr(3, 2, "Ping Menu:")
-
-        max_x = stdscr.getmaxyx()[1]
-        for i, opt in enumerate(options):
-            menu_line = opt.ljust(max_x - 8)
-            if i == idx:
-                stdscr.attron(curses.color_pair(1))
-                stdscr.addstr(5 + i, 4, menu_line)
-                stdscr.attroff(curses.color_pair(1))
-            else:
-                stdscr.addstr(5 + i, 4, menu_line)
-
-        stdscr.refresh()
-        key = stdscr.getch()
-
-        if key == curses.KEY_UP and idx > 0:
-            idx -= 1
-        elif key == curses.KEY_DOWN and idx < len(options) - 1:
-            idx += 1
-        elif key in [10, 13]:
-            if options[idx] == 'Back':
-                break
-            elif options[idx] == 'Custom address':
-                addr = get_input_inline(stdscr, "Enter address:")
-            else:
-                addr = ping_targets[idx][1]
-
-            res = run_command(f"ping -n 15 {addr}")
-            ping_results.append(res)
-            show_output(stdscr, res)
+    addr = get_input_inline(stdscr, "Enter address for ping:")
+    res = run_command(f"ping -n 10 {addr}")
+    ping_results.append(res)
+    show_output(stdscr, res)
 
 def traceroute_screen(stdscr):
     addr = get_input_inline(stdscr, "Enter address for traceroute:")
@@ -143,24 +105,24 @@ def simple_port_scan(host, ports):
             if result == 0:
                 open_ports.append(port)
             sock.close()
-        except Exception:
+        except:
             sock.close()
     return open_ports
 
 def port_scan_screen(stdscr):
     host = get_input_inline(stdscr, "Enter host for port scan:")
-    common_ports = [21,22,23,25,53,80,110,143,443,465,587,993,995,3306,8080]
+    common_ports = [21, 22, 23, 25, 53, 80, 110, 143, 443, 3306, 8080]
     open_ports = simple_port_scan(host, common_ports)
     res = f"Port scan results for {host}:\n"
     if open_ports:
         res += "Open ports:\n" + ", ".join(str(p) for p in open_ports)
     else:
-        res += "No open ports found on common ports."
+        res += "No open ports found."
     portscan_results.append(res)
     show_output(stdscr, res)
 
 def local_ports_screen(stdscr):
-    res = run_command("netstat -ano")
+    res = run_command("netstat -an")
     local_ports_results.append(res)
     show_output(stdscr, res)
 
@@ -171,7 +133,7 @@ def check_service(host, port):
         sock.connect((host, port))
         sock.close()
         return True
-    except Exception:
+    except:
         return False
 
 def service_check_screen(stdscr):
@@ -186,6 +148,7 @@ def service_check_screen(stdscr):
 
 def clear_results_screen(stdscr):
     ping_results.clear()
+    speedtest_results.clear()
     traceroute_results.clear()
     dns_results.clear()
     arp_results.clear()
@@ -219,7 +182,7 @@ def save_results(stdscr):
 
         show_output(stdscr, f"Results successfully saved to {output_file}")
     except Exception as e:
-        show_output(stdscr, f"Error saving results: {str(e)}")
+        show_output(stdscr, f"Error saving results: {e}")
 
 def main(stdscr):
     curses.start_color()
