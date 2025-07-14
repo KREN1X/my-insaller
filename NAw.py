@@ -116,39 +116,37 @@ def ping_screen(stdscr):
             show_output(stdscr, res)
 
 def speedtest_screen(stdscr):
+    import speedtest
+
     stdscr.clear()
     draw_banner(stdscr)
     stdscr.addstr(3, 2, "Running Speedtest... Please wait.")
     stdscr.refresh()
 
-    cmd = "speedtest --simple --json"
-    raw_output = run_command(cmd)
-
     try:
-        data = json.loads(raw_output)
+        s = speedtest.Speedtest()
+        s.get_best_server()
+        download = s.download() / 1_000_000
+        upload = s.upload() / 1_000_000
+        ping_latency = s.results.ping
+        isp = s.config['client']['isp']
+        server_name = s.results.server['name']
+        result_url = s.results.share()
+
+        output = (
+            "Speedtest Results\n"
+            f"Server: {server_name}\n"
+            f"ISP: {isp}\n"
+            f"Ping: {ping_latency:.2f} ms\n"
+            f"Download: {download:.2f} Mbps\n"
+            f"Upload: {upload:.2f} Mbps\n"
+            f"Result URL: {result_url}\n"
+        )
+
+        speedtest_results.append(output)
+        show_output(stdscr, output)
     except Exception as e:
-        show_output(stdscr, f"JSON parse error:\n{e}\n\nRaw output:\n{raw_output}")
-        return
-
-    server = data.get("server", {})
-    isp = data.get("client", {}).get("isp", "N/A")
-    ping_latency = data.get("ping", 0)
-    download_speed = data.get("download", 0) / 1_000_000
-    upload_speed = data.get("upload", 0) / 1_000_000
-    result_url = data.get("share", "None")
-
-    output = (
-        "Speedtest Results\n"
-        f"Server: {server.get('name', 'N/A')}\n"
-        f"ISP: {isp}\n"
-        f"Ping: {ping_latency:.2f} ms\n"
-        f"Download: {download_speed:.2f} Mbps\n"
-        f"Upload: {upload_speed:.2f} Mbps\n"
-        f"Result URL: {result_url}\n"
-    )
-
-    speedtest_results.append(output)
-    show_output(stdscr, output)
+        show_output(stdscr, f"Speedtest error: {str(e)}")
 
 def traceroute_screen(stdscr):
     addr = get_input_inline(stdscr, "Enter address for traceroute:")
